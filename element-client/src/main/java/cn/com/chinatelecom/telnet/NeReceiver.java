@@ -1,18 +1,16 @@
 package cn.com.chinatelecom.telnet;
 
-import java.net.URI;
-
 import cn.com.chinatelecom.exception.IllegalTelnetConnectionException;
 
 public class NeReceiver {
-  private URI uri;
+  private String ip;
   private int port;
   private String login;
   private String password;
-  
 
-  public NeReceiver(URI uri, int port, String login, String password) {
-    this.uri = uri;
+
+  public NeReceiver(String ip, int port, String login, String password) {
+    this.ip = ip;
     this.port = port;
     this.login = login.trim();
     this.password = password.trim();
@@ -32,11 +30,12 @@ public class NeReceiver {
     return this.password;
   }
 
-  public URI getUri() {
-    return this.uri;
+  public String getIp() {
+    return ip;
   }
 
   public int getPort() {
-    return this.port;
+    return port;
   }
+
 }

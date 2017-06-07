@@ -9,4 +9,7 @@ package cn.com.chinatelecom.telnet.command;
  * @version v0.0.1
  */
 public interface NeCommand {
+  public String content();
+
+  public String terminator();
 }
