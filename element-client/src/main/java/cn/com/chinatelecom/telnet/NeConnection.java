@@ -4,7 +4,8 @@ import org.apache.commons.net.telnet.TelnetClient;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.SocketException;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
@@ -13,14 +14,12 @@ import java.text.MessageFormat;
 import cn.com.chinatelecom.exception.IllegalTelnetConnectionException;
 import cn.com.chinatelecom.exception.NeConnectionException;
 import cn.com.chinatelecom.exception.NeReceiverInvalidException;
-import cn.com.chinatelecom.telnet.command.NeCommand;
-import cn.com.chinatelecom.telnet.reply.NeReply;
 import cn.com.chinatelecom.telnet.util.OperatingSystem;
 import cn.com.chinatelecom.telnet.util.OperatingSystem.OsType;
 
 public class NeConnection {
   private static final Charset UTF8_CHARSET = Charset.forName("UTF-8");
-  private static final int DEFAULT_TIMEOUT = 1000;
+  private static final int DEFAULT_TIMEOUT = 10000;
   private static final OsType DEFAULT_OSTYPE = OsType.Windows;
   private static final String DEFAULT_TERMTYPE = "vt200";
   private OsType osType;
@@ -29,12 +28,12 @@ public class NeConnection {
   private int timeout = -1;
   private NeReceiver receiver;
   private TelnetClient client;
-  private PrintStream write;
+  private OutputStream write;
   private InputStream read;
 
   public NeConnection(NeReceiver receiver) {
     this.receiver = receiver;
-    boolean flag = this.connect();
+    boolean flag = this.connectTest();
     if (!flag) {
       throw new NeConnectionException("Failed connect.");
     }
@@ -111,6 +110,44 @@ public class NeConnection {
     }
   }
 
+  private boolean connectTest() {
+    this.client = new TelnetClient(this.getTermType());
+    this.client.setCharset(this.getCharset());
+    this.client.setDefaultTimeout(this.getTimeout());
+    this.client.setDefaultPort(this.receiver.getPort());
+    try {
+      // 初始化链接，并取得输入输出流
+      this.client.connect(this.receiver.getIp());
+      if (this.client.isConnected()) {
+        try {
+          this.client.setKeepAlive(true);
+        } catch (SocketException ex) {
+          throw new IllegalTelnetConnectionException("Socket is disconnection.");
+        }
+        this.write = this.client.getOutputStream();
+        this.read = this.client.getInputStream();
+        String response = this.read(":");
+        System.out.println(response);
+        this.write(this.receiver.getLogin());
+        response = this.read(":");
+        System.out.println(response);
+        this.write(this.receiver.getPassword());
+        response = this.read("C:\\Users\\Administrator>");
+        System.out.println(response);
+        if (response.indexOf("C:\\Users\\Administrator>") >= 0) {
+          return true;
+        } else {
+          this.disconnect();
+          return false;
+        }
+      } else {
+        return false;
+      }
+    } catch (Exception ex) {
+      throw new NeConnectionException("Connect telnet faild.");
+    }
+  }
+
   private boolean connect() {
     this.client = new TelnetClient(this.getTermType());
     this.client.setCharset(this.getCharset());
@@ -125,14 +162,13 @@ public class NeConnection {
         } catch (SocketException ex) {
           throw new IllegalTelnetConnectionException("Socket is disconnection.");
         }
-        this.write = new PrintStream(this.client.getOutputStream());
+        this.write = this.client.getOutputStream();
         this.read = this.client.getInputStream();
-        // 登录网元
-        String command = MessageFormat.format("LGI:OP=\"{0}\", PWD=\"{1}\";", "", "");
-        // this.write(command);
-        // String response =
-        // this.read("--- END" + (this.getOsType() == OsType.Linux ? "/n" : "/n/r"));
-        String response = this.read("C:\\Users\\Administrator>");
+        this.read("\r\n");
+        String command = MessageFormat.format("LGI:OP=\"{0}\", PWD=\"{1}\";",
+            this.receiver.getLogin(), this.receiver.getPassword());
+        this.write(command);
+        String response = this.read("\r\n");
         if (response.indexOf("success") >= 0) {
           return true;
         } else {
@@ -159,7 +195,8 @@ public class NeConnection {
 
   public boolean write(String str) {
     try {
-      this.write.print(str.getBytes(this.getCharset()));
+      str = str + "\r\n";
+      this.write.write(str.getBytes(this.getCharset()));
       this.write.flush();
       return true;
     } catch (Exception ex) {
@@ -168,45 +205,39 @@ public class NeConnection {
   }
 
   public String read(String pattern) {
+    InputStreamReader isr = new InputStreamReader(this.read, Charset.forName("GBK"));
+    char[] charBytes = new char[1024];
+    int n = 0;
+    boolean flag = false;
+    String str = "";
     try {
-      char lastChar = pattern.charAt(pattern.length() - 1);
-      StringBuffer sb = new StringBuffer();
-      char ch = (char) this.read.read();
-      while (true) {
-        // System.out.print(ch);// ---需要注释掉
-        sb.append(ch);
-        if (ch == lastChar) {
-          if (sb.toString().endsWith(pattern)) {
-            // 处理编码，界面显示乱码问题
-            byte[] temp = sb.toString().getBytes(this.getCharset());
-            return new String(temp);
+      while ((n = isr.read(charBytes)) != -1) {
+        for (int i = 0; i < n; i++) {
+          char c = (char) charBytes[i];
+          str += c;
+          if (str.endsWith(pattern)) {
+            flag = true;
+            break;
           }
         }
-        ch = (char) this.read.read();
+        if (flag) {
+          break;
+        }
       }
-    } catch (Exception e) {
+    } catch (IOException e) {
       e.printStackTrace();
     }
-    return null;
-  }
-
-  public NeReply sendCommand(NeCommand command) {
-    this.write(command.content());
-    String response = this.read(command.terminator());
-    NeReply result = new NeReply();
-    result.setMessage(response);
-    return result;
+    return str;
   }
 
   public String sendCommand(String command, String terminator) {
     this.write(command);
     String response = this.read(terminator);
+    this.disconnect();
     return response;
   }
 
   public String sendCommand(String command) {
-    // return this.sendCommand(command,
-    // "--- END" + (this.getOsType() == OsType.Linux ? "/n" : "/n/r"));
-    return this.sendCommand(command, "C:\\Users\\Administrator>");
+    return this.sendCommand(command, "\r\n");
   }
 }
