@@ -14,6 +14,7 @@ import java.text.MessageFormat;
 import cn.com.chinatelecom.exception.IllegalTelnetConnectionException;
 import cn.com.chinatelecom.exception.NeConnectionException;
 import cn.com.chinatelecom.exception.NeReceiverInvalidException;
+import cn.com.chinatelecom.telnet.util.InputStreamUtils;
 import cn.com.chinatelecom.telnet.util.OperatingSystem;
 import cn.com.chinatelecom.telnet.util.OperatingSystem.OsType;
 
@@ -30,6 +31,7 @@ public class NeConnection {
   private TelnetClient client;
   private OutputStream write;
   private InputStream read;
+
 
   public NeConnection(NeReceiver receiver) {
     this.receiver = receiver;
@@ -113,7 +115,7 @@ public class NeConnection {
   private boolean connectTest() {
     this.client = new TelnetClient(this.getTermType());
     this.client.setCharset(this.getCharset());
-    this.client.setDefaultTimeout(this.getTimeout());
+    // this.client.setConnectTimeout(DEFAULT_TIMEOUT);
     this.client.setDefaultPort(this.receiver.getPort());
     try {
       // 初始化链接，并取得输入输出流
@@ -126,7 +128,7 @@ public class NeConnection {
         }
         this.write = this.client.getOutputStream();
         this.read = this.client.getInputStream();
-        String response = this.read(":");
+        String response = this.read("login:");
         System.out.println(response);
         this.write(this.receiver.getLogin());
         response = this.read(":");
@@ -151,7 +153,6 @@ public class NeConnection {
   private boolean connect() {
     this.client = new TelnetClient(this.getTermType());
     this.client.setCharset(this.getCharset());
-    this.client.setDefaultTimeout(this.getTimeout());
     this.client.setDefaultPort(this.receiver.getPort());
     try {
       // 初始化链接，并取得输入输出流
@@ -205,29 +206,38 @@ public class NeConnection {
   }
 
   public String read(String pattern) {
-    InputStreamReader isr = new InputStreamReader(this.read, Charset.forName("GBK"));
-    char[] charBytes = new char[1024];
-    int n = 0;
-    boolean flag = false;
-    String str = "";
     try {
-      while ((n = isr.read(charBytes)) != -1) {
-        for (int i = 0; i < n; i++) {
-          char c = (char) charBytes[i];
-          str += c;
-          if (str.endsWith(pattern)) {
-            flag = true;
-            break;
-          }
-        }
-        if (flag) {
-          break;
-        }
-      }
-    } catch (IOException e) {
-      e.printStackTrace();
+      String result = InputStreamUtils.read(this.read, Charset.forName("GBK"), pattern);
+      return result;
+    } catch (IOException e1) {
+      // TODO Auto-generated catch block
+      e1.printStackTrace();
     }
-    return str;
+    return null;
+    // InputStreamReader isr = new InputStreamReader(this.read, Charset.forName("GBK"));
+    // char[] charBytes = new char[1024];
+    // int n = 0;
+    // boolean flag = false;
+    // String str = "";
+    // try {
+    // while ((n = isr.read(charBytes)) != -1) {
+    // System.out.println(n);
+    // for (int i = 0; i < n; i++) {
+    // char c = (char) charBytes[i];
+    // str += c;
+    // if (str.endsWith(pattern)) {
+    // flag = true;
+    // break;
+    // }
+    // }
+    // if (flag) {
+    // break;
+    // }
+    // }
+    // } catch (IOException e) {
+    // e.printStackTrace();
+    // }
+    // return str;
   }
 
   public String sendCommand(String command, String terminator) {
